@@ -19,14 +19,49 @@ RATE_LIMIT_SEMAPHORE = asyncio.Semaphore(5)  # Allow 5 requests at a time
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute('''
+    cursor.executescript("""
         CREATE TABLE IF NOT EXISTS games (
             appid INTEGER PRIMARY KEY,
-            name TEXT,
-            categories TEXT,
-            genres TEXT
-        )
-    ''')
+            name TEXT NOT NULL,
+            description TEXT,
+            release_date TEXT,
+            price INTEGER,
+            is_free BOOLEAN
+        );
+
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS genres (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS game_categories (
+            game_id INTEGER,
+            category_id INTEGER,
+            FOREIGN KEY (game_id) REFERENCES games (appid),
+            FOREIGN KEY (category_id) REFERENCES categories (id),
+            PRIMARY KEY (game_id, category_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS game_genres (
+            game_id INTEGER,
+            genre_id INTEGER,
+            FOREIGN KEY (game_id) REFERENCES games (appid),
+            FOREIGN KEY (genre_id) REFERENCES genres (id),
+            PRIMARY KEY (game_id, genre_id)
+        );
+
+        -- Indexes for faster queries
+        CREATE INDEX IF NOT EXISTS idx_games_name ON games (name);
+        CREATE INDEX IF NOT EXISTS idx_genres_name ON genres (name);
+        CREATE INDEX IF NOT EXISTS idx_categories_name ON categories (name);
+        CREATE INDEX IF NOT EXISTS idx_game_categories_game ON game_categories (game_id);
+        CREATE INDEX IF NOT EXISTS idx_game_genres_game ON game_genres (game_id);
+    """)
     conn.commit()
     conn.close()
 
@@ -83,17 +118,34 @@ def save_to_database(games):
     for game in games:
         appid = game.get("steam_appid")
         name = game.get("name", "Unknown")
-        categories = ", ".join([c["description"] for c in game.get("categories", [])])
-        genres = ", ".join([g["description"] for g in game.get("genres", [])])
+        description = game.get("short_description", "")
+        release_date = game.get("release_date", {}).get("date", "Unknown")
+        is_free = game.get("is_free", False)
+        price = game.get("price_overview", {}).get("final", 0)  # Price in cents
 
-        # Check if game already exists in DB
-        cursor.execute("SELECT COUNT(*) FROM games WHERE appid = ?", (appid,))
-        if cursor.fetchone()[0] == 0:  # If game is not in DB, insert it
-            cursor.execute(
-                "INSERT INTO games (appid, name, categories, genres) VALUES (?, ?, ?, ?)",
-                (appid, name, categories, genres)
-            )
-            print(f"Added: {name} (ID: {appid})")
+        # Insert game if not exists
+        cursor.execute("""
+            INSERT OR IGNORE INTO games (appid, name, description, release_date, price, is_free)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (appid, name, description, release_date, price, is_free))
+
+        # Insert categories
+        for category in game.get("categories", []):
+            category_name = category["description"]
+            cursor.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (category_name,))
+            cursor.execute("""
+                INSERT OR IGNORE INTO game_categories (game_id, category_id)
+                VALUES (?, (SELECT id FROM categories WHERE name = ?))
+            """, (appid, category_name))
+
+        # Insert genres
+        for genre in game.get("genres", []):
+            genre_name = genre["description"]
+            cursor.execute("INSERT OR IGNORE INTO genres (name) VALUES (?)", (genre_name,))
+            cursor.execute("""
+                INSERT OR IGNORE INTO game_genres (game_id, genre_id)
+                VALUES (?, (SELECT id FROM genres WHERE name = ?))
+            """, (appid, genre_name))
 
     conn.commit()
     conn.close()
