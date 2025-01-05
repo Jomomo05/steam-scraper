@@ -1,4 +1,4 @@
-# steamapicollection
+# steam-scraper
 
 A simple **Proof-of-Concept (PoC)** script that scrapes **public Steam API** data and stores it in a **SQLite database**.
 
