@@ -16,6 +16,9 @@ RUN python3 -m pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the project
 COPY . /app
 
+# Ensure the data directory exists
+RUN mkdir -p /app/data && chmod -R 777 /app/data
+
 # Ensure proper permissions
 RUN chmod +x /app/main.py
 

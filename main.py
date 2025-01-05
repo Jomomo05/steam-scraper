@@ -1,11 +1,16 @@
 import aiohttp
 import asyncio
 import sqlite3
-import time
+import os
 
 STEAM_PRODUCTS_LIST="https://api.steampowered.com/ISteamApps/GetAppList/v2/"
 STEAM_APP_DETAIL="https://store.steampowered.com/api/appdetails"
-DB_FILE="steam_games.db"
+
+# Define the folder where the database will be stored
+DATA_DIR = "/app/data"
+os.makedirs(DATA_DIR, exist_ok=True)  # Ensure the directory exists
+
+DB_FILE = os.path.join(DATA_DIR, "steam_games.db")
 
 # API rate limits: 200 requests per 5 minutes (one every 1.5s)
 RATE_LIMIT_SEMAPHORE = asyncio.Semaphore(5)  # Allow 5 requests at a time
@@ -30,7 +35,7 @@ async def get_product_list():
         async with session.get(STEAM_PRODUCTS_LIST) as resp:
             if resp.status == 200:
                 data = await resp.json()
-                return data.get("applist", {}).get("apps", [])[:50] # Limit to 50 for demo purposes
+                return data.get("applist", {}).get("apps", [])[:100] # Limit to 50 for demo purposes
 
 async def fetch_game_details(app_id):
     async with RATE_LIMIT_SEMAPHORE:  # Throttle API calls
